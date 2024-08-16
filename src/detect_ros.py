@@ -153,6 +153,7 @@ class Yolov7Publisher:
 
         # publishing
         detection_msg = create_detection_msg(img_msg, detections)
+        detection_msg.header = img_msg.header
         self.detection_publisher.publish(detection_msg)
 
         # visualizing if required
