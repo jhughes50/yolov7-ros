@@ -2,10 +2,12 @@
 
 from models.experimental import attempt_load
 from utils.general import non_max_suppression
+from utils.general import non_max_suppression_mask_conf
 from utils.ros import create_detection_msg
 from visualizer import draw_detections
 
 import os
+import yaml
 from typing import Tuple, Union, List
 
 import torch
@@ -17,6 +19,10 @@ import rospy
 from vision_msgs.msg import Detection2DArray, Detection2D, BoundingBox2D
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
+
+from detectron2.modeling.poolers import ROIPooler
+from detectron2.structures import Boxes
+from detectron2.layers import paste_masks_in_image
 
 
 def parse_classes_file(path):
@@ -54,6 +60,8 @@ class YoloV7:
         self.device = device
         self.model = attempt_load(weights, map_location=device)
         self.model.eval()
+        with open('data/hyp.scratch.mask.yaml') as f:
+            self.hyp = yaml.load(f, Loader=yaml.FullLoader)
 
     @torch.no_grad()
     def inference(self, img: torch.Tensor):
@@ -63,14 +71,26 @@ class YoloV7:
             [x1, y1, x2, y2, confidence, class_id]
         """
         img = img.unsqueeze(0)
-        pred_results = self.model(img)[0]
-        detections = non_max_suppression(
-            pred_results, conf_thres=self.conf_thresh, iou_thres=self.iou_thresh
-        )
-        if detections:
-            detections = detections[0]
-        return detections
+        output = self.model(img)
+        inf_out, train_out, attn, mask_iou, bases, sem_output = output['test'], output['bbox_and_cls'], output['attn'], output['mask_iou'], output['bases'], output['sem']
+    
+        bases = torch.cat([bases, sem_output], dim=1)
+        nb, _, height, width = image.shape
+        names = model.names
+        pooler_scale = model.pooler_scale
+        pooler = ROIPooler(output_size=self.hyp['mask_resolution'], scales=(pooler_scale,), sampling_ratio=1, pooler_type='ROIAlignV2', canonical_level=2)
 
+        output, output_mask, output_mask_score, output_ac, output_ab = non_max_suppression_mask_conf(inf_out, attn, bases, pooler, hyp, conf_thres=0.25, iou_thres=0.65, merge=False, mask_iou=None)
+
+        pred, pred_masks = output[0], output_mask[0]
+        base = bases[0]
+        bboxes = Boxes(pred[:, :4])
+
+        pred_masks_np = pred_masks.detach().cpu().numpy()
+        pred_cls = pred[:, 5].detach().cpu().numpy()
+        pred_conf = pred[:, 4].detach().cpu().numpy()
+
+        return pred_masks_np, pred_cls, pred_conf
 
 class Yolov7Publisher:
     def __init__(self, img_topic: str, weights: str, conf_thresh: float = 0.5,
@@ -117,10 +137,12 @@ class Yolov7Publisher:
         self.img_subscriber = rospy.Subscriber(
             img_topic, Image, self.process_img_msg
         )
-        self.detection_publisher = rospy.Publisher(
-            pub_topic, Detection2DArray, queue_size=queue_size
-        )
+        #self.detection_publisher = rospy.Publisher(
+        #    pub_topic, Detection2DArray, queue_size=queue_size
+        #)
+        self.mask_pub = rospy.Publisher(pub_topic, Image, queue_size=2)
         rospy.loginfo("YOLOv7 initialization complete. Ready to start inference")
+
 
     def process_img_msg(self, img_msg: Image):
         """ callback function for publisher """
@@ -146,25 +168,15 @@ class Yolov7Publisher:
         img = img.to(self.device)
 
         # inference & rescaling the output to original img size
-        detections = self.model.inference(img)
-        detections[:, :4] = rescale(
-            [h_scaled, w_scaled], detections[:, :4], [h_orig, w_orig])
-        detections[:, :4] = detections[:, :4].round()
+        pred_masks_np, pred_cls, pred_conf = self.model.inference(img)
 
-        # publishing
-        detection_msg = create_detection_msg(img_msg, detections)
-        detection_msg.header = img_msg.header
-        self.detection_publisher.publish(detection_msg)
-
-        # visualizing if required
-        if self.visualization_publisher:
-            bboxes = [[int(x1), int(y1), int(x2), int(y2)]
-                      for x1, y1, x2, y2 in detections[:, :4].tolist()]
-            classes = [int(c) for c in detections[:, 5].tolist()]
-            vis_img = draw_detections(np_img_orig, bboxes, classes,
-                                      self.class_labels)
-            vis_msg = self.bridge.cv2_to_imgmsg(vis_img, encoding="bgr8")
-            self.visualization_publisher.publish(vis_msg)
+        for mask, cls, conf in zip(pred_masks_np, pred_cls, pred_conf):
+            if cls == 0 and conf > 0.25: # 0 is class for person
+                mask_img = np_img_resized[mask]
+            
+                pub_msg = self.bridge.cv2_to_imgmsg(mask_img)
+                pub_msg.header = img_msg.header
+                self.mask_pub(pub_msg)
 
 
 if __name__ == "__main__":
