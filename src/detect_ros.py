@@ -83,7 +83,7 @@ class YoloV7:
         #print(inf_out)
         #output, output_mask, output_mask_score, output_ac, output_ab = non_max_suppression_mask_conf(inf_out, attn, bases, pooler, self.hyp, conf_thres=0.25, iou_thres=0.35, vote=True, mask_iou=None)
         #print(output_mask) 
-        pred, pred_masks = get_mask(inf_out, attn, bases
+        pred, pred_masks = get_mask(inf_out, attn, bases, pooler, self.hyp, conf_thres=0.25, iou_thres=0.35)
         pred, pred_masks = output[0], output_mask[0]
         base = bases[0]
         bboxes = Boxes(pred[:, :4])
