@@ -60,7 +60,7 @@ class YoloV7:
         self.device = device
         self.model = attempt_load(weights, map_location=device)
         self.model.eval()
-        with open('data/hyp.scratch.mask.yaml') as f:
+        with open('/home/jasonah/ws/src/yolov7-ros/src/data/hyp.scratch.mask.yaml') as f:
             self.hyp = yaml.load(f, Loader=yaml.FullLoader)
 
     @torch.no_grad()
@@ -75,13 +75,13 @@ class YoloV7:
         inf_out, train_out, attn, mask_iou, bases, sem_output = output['test'], output['bbox_and_cls'], output['attn'], output['mask_iou'], output['bases'], output['sem']
     
         bases = torch.cat([bases, sem_output], dim=1)
-        nb, _, height, width = image.shape
-        names = model.names
-        pooler_scale = model.pooler_scale
+        nb, _, height, width = img.shape
+        names = self.model.names
+        pooler_scale = self.model.pooler_scale
         pooler = ROIPooler(output_size=self.hyp['mask_resolution'], scales=(pooler_scale,), sampling_ratio=1, pooler_type='ROIAlignV2', canonical_level=2)
 
-        output, output_mask, output_mask_score, output_ac, output_ab = non_max_suppression_mask_conf(inf_out, attn, bases, pooler, hyp, conf_thres=0.25, iou_thres=0.65, merge=False, mask_iou=None)
-
+        output, output_mask, output_mask_score, output_ac, output_ab = non_max_suppression_mask_conf(inf_out, attn, bases, pooler, self.hyp, conf_thres=0.25, iou_thres=0.35, merge=False, mask_iou=None)
+        print(output_mask) 
         pred, pred_masks = output[0], output_mask[0]
         base = bases[0]
         bboxes = Boxes(pred[:, :4])
