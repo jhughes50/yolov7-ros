@@ -63,6 +63,19 @@ class YoloV7:
         with open('/home/jasonah/ws/src/yolov7-ros/src/data/hyp.scratch.mask.yaml') as f:
             self.hyp = yaml.load(f, Loader=yaml.FullLoader)
 
+    def get_mask(self, predictions):
+        xc = prediction[..., 4] > conf_thres
+        for i, x in predictions:
+            x = x[xc[i]]
+            box = xywh2xyxy(x[:, :4])
+            base = bases[i]
+
+            a = attn[i][xc[i]]
+            bboxes = Boxes[i]
+
+            pooled_bases = pooler([base[None]], bboxes])
+            mask = merge_bases(pooled_bases, a, hyp["attn_resolution"], hyp["num_base"]).view(a.shape[0], -1).sigmoid()
+
     @torch.no_grad()
     def inference(self, img: torch.Tensor):
         """
@@ -79,8 +92,8 @@ class YoloV7:
         names = self.model.names
         pooler_scale = self.model.pooler_scale
         pooler = ROIPooler(output_size=self.hyp['mask_resolution'], scales=(pooler_scale,), sampling_ratio=1, pooler_type='ROIAlignV2', canonical_level=2)
-
-        output, output_mask, output_mask_score, output_ac, output_ab = non_max_suppression_mask_conf(inf_out, attn, bases, pooler, self.hyp, conf_thres=0.25, iou_thres=0.35, merge=False, mask_iou=None)
+        #print(inf_out)
+        output, output_mask, output_mask_score, output_ac, output_ab = non_max_suppression_mask_conf(inf_out, attn, bases, pooler, self.hyp, conf_thres=0.25, iou_thres=0.35, vote=True, mask_iou=None)
         print(output_mask) 
         pred, pred_masks = output[0], output_mask[0]
         base = bases[0]

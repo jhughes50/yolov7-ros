@@ -900,15 +900,15 @@ def non_max_suppression_mask_conf(prediction, attn, bases, pooler, hyp, conf_thr
     min_wh, max_wh = 2, 4096  # (pixels) minimum and maximum box width and height
     max_det = 300  # maximum number of detections per image
     time_limit = 10.0  # seconds to quit after
-    redundant = True  # require redundant detections
-    multi_label = nc > 1  # multiple labels per box (adds 0.5ms/img)
+    redundant = False  # require redundant detections
+    multi_label = nc >= 1  # multiple labels per box (adds 0.5ms/img)
 
     t = time.time()
-    output = [None] * prediction.shape[0]
-    output_mask = [None] * prediction.shape[0]
-    output_mask_score = [None] * prediction.shape[0]
-    output_ac = [None] * prediction.shape[0]
-    output_ab = [None] * prediction.shape[0]
+    output =  prediction.shape[0]
+    output_mask =  prediction.shape[0]
+    output_mask_score = prediction.shape[0]
+    output_ac =  prediction.shape[0]
+    output_ab =  prediction.shape[0]
     
     def RMS_contrast(masks):
         mu = torch.mean(masks, dim=-1, keepdim=True)
@@ -916,6 +916,7 @@ def non_max_suppression_mask_conf(prediction, attn, bases, pooler, hyp, conf_thr
     
     
     for xi, x in enumerate(prediction):  # image index, image inference
+        #print("prediction: ", xi)
         # Apply constraints
         # x[((x[..., 2:4] < min_wh) | (x[..., 2:4] > max_wh)).any(1), 4] = 0  # width-height
         x = x[xc[xi]]  # confidence
@@ -1001,7 +1002,7 @@ def non_max_suppression_mask_conf(prediction, attn, bases, pooler, hyp, conf_thr
         output_ab[xi] = all_boxes
         if attn is not None:
             output_mask[xi] = pred_masks[i]
-        if (time.time() - t) > time_limit:
-            break  # time limit exceeded
+        #if (time.time() - t) > time_limit:
+        #    break  # time limit exceeded
 
     return output, output_mask, output_mask_score, output_ac, output_ab
