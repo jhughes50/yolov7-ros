@@ -1027,3 +1027,20 @@ def get_mask(predictions, attn, bases, pooler, hyp, conf_thres, iou_thres):
         score = mask_score[i][xc[i]][..., None]
         break
     return pred, mask
+
+def merge_bases(rois, coeffs, attn_r, num_b, location_to_inds=None):
+    # merge predictions
+    # N = coeffs.size(0)
+    if location_to_inds is not None:
+        rois = rois[location_to_inds]
+    N, B, H, W = rois.size()
+    if coeffs.dim() != 4:
+        coeffs = coeffs.view(N, num_b, attn_r, attn_r)
+    # NA = coeffs.shape[1] //  B
+    coeffs = F.interpolate(coeffs, (H, W),
+                           mode="bilinear").softmax(dim=1)
+    # coeffs = coeffs.view(N, -1, B, H, W)
+    # rois = rois[:, None, ...].repeat(1, NA, 1, 1, 1)
+    # masks_preds, _ = (rois * coeffs).sum(dim=2) # c.max(dim=1)
+    masks_preds = (rois * coeffs).sum(dim=1)
+    return masks_preds
