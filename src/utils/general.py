@@ -1006,3 +1006,21 @@ def non_max_suppression_mask_conf(prediction, attn, bases, pooler, hyp, conf_thr
         #    break  # time limit exceeded
 
     return output, output_mask, output_mask_score, output_ac, output_ab
+
+
+def get_mask(predictions, attn, bases, pooler, hyp, conf_thres):
+    xc = prediction[..., 4] > conf_thres
+    for i, x in predictions:
+        x = x[xc[i]]
+        box = xywh2xyxy(x[:, :4])
+        base = bases[i]
+
+        a = attn[i][xc[i]]
+        bboxes = Boxes[i]
+
+        pooled_bases = pooler([base[None]], bboxes])
+        mask = merge_bases(pooled_bases, a, hyp["attn_resolution"], hyp["num_base"]).view(a.shape[0], -1).sigmoid()
+
+        score = mask_score[i][xc[i]][..., None]
+        break
+    return mask, score
