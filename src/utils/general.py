@@ -17,6 +17,7 @@ import pandas as pd
 import torch
 import torchvision
 import yaml
+from detectron2.structures import Boxes
 
 from utils.google_utils import gsutil_getsize
 from utils.metrics import fitness
@@ -1009,16 +1010,16 @@ def non_max_suppression_mask_conf(prediction, attn, bases, pooler, hyp, conf_thr
 
 
 def get_mask(predictions, attn, bases, pooler, hyp, conf_thres, iou_thres):
-    xc = prediction[..., 4] > conf_thres
-    for i, x in predictions:
+    xc = predictions[..., 4] > conf_thres
+    for i, x in enumerate(predictions):
         x = x[xc[i]]
         box = xywh2xyxy(x[:, :4])
         base = bases[i]
 
         a = attn[i][xc[i]]
-        bboxes = Boxes[i]
+        bboxes = Boxes(box)
 
-        pooled_bases = pooler([base[None]], bboxes])
+        pooled_bases = pooler([base[None]], [bboxes])
         mask = merge_bases(pooled_bases, a, hyp["attn_resolution"], hyp["num_base"]).view(a.shape[0], -1).sigmoid()
         
         w = torchvision.ops.boxes.nms(boxes, scores, iou_thres)

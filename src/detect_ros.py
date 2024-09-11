@@ -3,6 +3,7 @@
 from models.experimental import attempt_load
 from utils.general import non_max_suppression
 from utils.general import non_max_suppression_mask_conf
+from utils.general import get_mask
 from utils.ros import create_detection_msg
 from visualizer import draw_detections
 
